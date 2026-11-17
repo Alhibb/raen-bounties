@@ -1,53 +1,50 @@
 # raen-cli.py — One-file Python x402 Client for the RAEN Fleet
 
-A single-file Python CLI that discovers all 12 RAEN x402 services from agent.json,
-fires paid tool calls, and prints the full x402 settlement receipt.
+A robust single-file Python CLI that discovers RAEN x402 services, handles EIP-3009 micropayments on Base mainnet (both x402 v1 and v2), and verifies settlement proofs.
+
+## Features
+
+- **Standards-compliant EIP-712 / EIP-3009 signing** via `eth-account`.
+- **Verified Keccak-256** and deterministic single-nonce authorization.
+- **Support for both x402 v1 (`X-PAYMENT`) and v2 (`PAYMENT-SIGNATURE`)** with case-insensitive HTTP challenge decoding.
+- **Safe offline `--dry-run`** mode for simulated inspection without broadcasting signatures or payments.
+- **Spending safety cap** (`--max-amount <atomic_units>`) to prevent unexpected charges.
+- **Secure key management**: reads from `RAEN_PRIVATE_KEY` environment variable instead of insecure CLI arguments.
 
 ## Usage
 
 ```bash
-# List all available services
+# List all fleet services
 python raen-cli.py --list
 
-# Call a service with dry-run (mock signing, no real payment)
+# Test call with dry-run (inspect 402 challenge, no signature broadcast)
 python raen-cli.py raen_law_lookup "What is the FCRA dispute timeline?" --dry-run
 
-# Call with real x402 signing (requires private key)
+# Call with real signing on Base mainnet
 export RAEN_PRIVATE_KEY=0x...
-python raen-cli.py raen_image_generate "a sunset over mountains"
+python raen-cli.py raen_law_lookup "What is the FCRA dispute timeline?"
 
-# With gateway API key
+# With optional spending cap ($0.10 USDC max = 100000 atomic units)
+python raen-cli.py raen_law_lookup "FCRA question" --max-amount 100000
+
+# With gateway Bearer key (if you have one)
 python raen-cli.py raen_contract_analysis "analyze this contract..." --key <bearer-token> --json
 ```
 
-## What it does end-to-end
+## Running Unit Tests
 
-1. **Discovery**: Reads `GET https://raen-mcp-gateway.fly.dev/.well-known/agent.json`
-2. **Call**: POSTs MCP `tools/call` to the gateway
-3. **Payment handling** (x402 v2):
-   - If server returns 402 → decodes `PAYMENT-REQUIRED` header
-   - Selects best `exact` scheme on Base mainnet
-   - Signs EIP-712 authorization via `eth_account`
-   - Resends request with `PAYMENT-SIGNATURE` header
-4. **Receipt**: Decodes `PAYMENT-RESPONSE` header and prints settlement proof
+```bash
+python -m unittest raen-cli/test_raen_cli.py
+```
+
+Tests verify:
+- Standard Keccak-256 hashing versus NIST sha3-256
+- Recovering signer address from generated EIP-3009 authorization signatures
+- Nonce and timestamp consistency between signed digest and serialized payload
+- Both x402 v1 and v2 challenge parsing with case-insensitive HTTP headers
+- Offline dry-run safety and spending cap enforcement
 
 ## Dependencies
 
-- **Zero dependencies for listing mode** (`--list`, `--help`)
-- **One dependency for paid calls**: `pip install eth-account cryptography`
-- Runs on Python 3.9+ (stdlib only except eth-account)
-
-## Acceptance Criteria Met
-
-| Requirement | Status |
-|-------------|--------|
-| Single file, stdlib + one signer dep | ✅ `raen-cli.py` ~280 lines |
-| Lists every service from agents.json | ✅ `get_services()` queries agent.json |
-| Fires paid call end-to-end | ✅ `call_tool()` handles 402→sign→resend loop |
-| Prints settlement receipt | ✅ PAYMENT-RESPONSE decoded & printed |
-| `python raen-cli.py <service> <prompt>` works | ✅ argparse handles all args |
-| Public repo or PR here | ✅ Submitted as PR below |
-
-## Claim
-
-Comment `/claim 2` on issue #2: https://github.com/bshelby88/raen-bounties/issues/2
+- **Zero dependencies** for `--list` and `--help`
+- **Single signing dependency**: `pip install eth-account`
